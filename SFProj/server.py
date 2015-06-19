@@ -74,7 +74,6 @@ class ClientHandler(asynchat.async_chat):
         self.database.add_new_client(self.id)
 
     def handle_heartbeat(self):
-        print 'heartbeat:{}'.format(self.id)
         msg = 'Heartbeat from client id:{} on port:{}'.format(self.id, self.addr[1])
         self.server_logger.info(msg)
 
@@ -84,7 +83,6 @@ class ClientHandler(asynchat.async_chat):
         self.server_logger.info(msg)
 
     def handle_stop(self):
-        print 'stop:{}'.format(self.id)
         self.stopped = True
         msg = 'STOPPED client id:{} on port:{}'.format(self.id, self.addr[1])
         self.server_logger.info(msg)
@@ -134,6 +132,7 @@ class BenchmarkServer(asyncore.dispatcher):
             print 'Incoming connection from {}'.format(addr)
             # If this is the first client connected set up polling loop to wait for all clients to finish for report
             if not self.clients:
+                print 'Beginning benchmark session...'
                 report_thread = threading.Timer(10, self.check_report)
                 report_thread.daemon = True
                 report_thread.start()

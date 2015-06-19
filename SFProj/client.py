@@ -99,12 +99,9 @@ class BenchmarkClient(asynchat.async_chat):
     def data_thread(self):
         # Open initial write file with unique name
         chunk = '0' * self.chunksize
-        # To write actual files uncomment below and within while loop and import datetime
-        '''filename = 'client_data-{}_'.format(self.addr[1]) \
-                    + datetime.datetime.now().strftime('%H:%M:%S.%f_%B_%d_%Y')
-        f = open(filename, 'w')'''
         start_time = time.time()
-        # Use temporary file to avoid flooding hard drive with files full of 0's
+        # Spooled temp files will write a temporary file to disk when the file rolls over.
+        # This simulates an actual disk write without flooding the hard drive with files full of 0's.
         f = tempfile.SpooledTemporaryFile(max_size=self.filesize)
         # Write to this file until time is up. Handle file rolls as needed. Stop if socket becomes disconnected.
         while ((time.time() - start_time) < self.runtime) and self.is_connected:
@@ -113,18 +110,6 @@ class BenchmarkClient(asynchat.async_chat):
                 f.close()
                 self.report_file_roll()
                 f = tempfile.SpooledTemporaryFile(max_size=self.filesize)
-
-            '''if (f.tell() + len(chunk)) >= self.filesize:
-                # Write remainder of file then close and report file roll
-                small_chunk = '0' * (self.filesize - f.tell())
-                f.write(small_chunk)
-                f.close()
-                self.report_file_roll()
-                # Open new temporary file to continue writing
-                f = tempfile.TemporaryFile()'''
-            '''filename = 'client_data-{}_'.format(self.addr[1]) \
-                            + datetime.datetime.now().strftime('%H:%M:%S.%f_%B_%d_%Y')
-                f = open(filename, 'w')'''
         f.close()
         self.stop()
 
@@ -163,7 +148,6 @@ class BenchmarkClient(asynchat.async_chat):
         # Using random numbers as a proof of concept for now. Would use profiler in full implementation.
         CPU = random.uniform(0,100)
         memory = random.uniform(0,100)
-        print 'Sending performance data'
         msg = 'PERF_DATA,{},{}\n'.format(CPU, memory)
         self.push(msg)
         if self.is_connected:
@@ -193,21 +177,21 @@ if __name__ == "__main__":
     # These clients are currently set up in a configuration that successfully completes as a test case on my PC.
     # If performance on the test computer is poor they Modify as you see fit :-)
     chunksize = 10 * 1024 * 1024 #10MiB
-    runtime = 20 #seconds
+    runtime = 32 #seconds
     filesize = 1000 * 1024 * 1024 #1000MiB
     id = 1
     first_client = BenchmarkClient(address, id, chunksize, runtime, filesize)
     clients.append(first_client)
 
     chunksize = 20 * 1024 * 1024 #20MiB
-    runtime = 22
+    runtime = 27
     filesize = 500 * 1024 * 1024 #500MiB
     id = 2
     second_client = BenchmarkClient(address, id, chunksize, runtime, filesize)
     clients.append(second_client)
 
     chunksize = 30 * 1024 * 1024 #30MiB
-    runtime = 25
+    runtime = 34
     filesize = 250 * 1024 * 1024 #250MiB
     id = 3
     third_client = BenchmarkClient(address, id, chunksize, runtime, filesize)
@@ -221,7 +205,7 @@ if __name__ == "__main__":
     clients.append(fourth_client)
 
     chunksize = 15 * 1024 * 1024 #15MiB
-    runtime = 18
+    runtime = 34
     filesize = 100 * 1024 * 1024 #100MiB
     id = 5
     fifth_client = BenchmarkClient(address, id, chunksize, runtime, filesize)
@@ -233,6 +217,7 @@ if __name__ == "__main__":
     async_loop.start()
 
     # Start all clients (stagger for interesting timing)
+    print 'Starting all clients...'
     first_client.start()
     time.sleep(1)
     second_client.start()
@@ -249,5 +234,5 @@ if __name__ == "__main__":
         if any(client.connected for client in clients):
             continue
         else:
-            print 'Closing...'
+            print 'Client session complete!'
             quit()

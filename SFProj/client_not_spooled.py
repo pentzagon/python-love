@@ -99,58 +99,29 @@ class BenchmarkClient(asynchat.async_chat):
     def data_thread(self):
         # Open initial write file with unique name
         chunk = '0' * self.chunksize
+        # Use temporary file to avoid flooding hard drive with files full of 0's
+        f = tempfile.TemporaryFile()
         # To write actual files uncomment below and within while loop and import datetime
         '''filename = 'client_data-{}_'.format(self.addr[1]) \
                     + datetime.datetime.now().strftime('%H:%M:%S.%f_%B_%d_%Y')
         f = open(filename, 'w')'''
         start_time = time.time()
-        # Use temporary file to avoid flooding hard drive with files full of 0's
-        f = tempfile.SpooledTemporaryFile(max_size=self.filesize)
         # Write to this file until time is up. Handle file rolls as needed. Stop if socket becomes disconnected.
         while ((time.time() - start_time) < self.runtime) and self.is_connected:
             f.write(chunk)
-            if f._rolled == True:
-                f.close()
-                self.report_file_roll()
-                f = tempfile.SpooledTemporaryFile(max_size=self.filesize)
-
-            '''if (f.tell() + len(chunk)) >= self.filesize:
+            if (f.tell() + len(chunk)) >= self.filesize:
                 # Write remainder of file then close and report file roll
                 small_chunk = '0' * (self.filesize - f.tell())
                 f.write(small_chunk)
                 f.close()
                 self.report_file_roll()
                 # Open new temporary file to continue writing
-                f = tempfile.TemporaryFile()'''
-            '''filename = 'client_data-{}_'.format(self.addr[1]) \
+                f = tempfile.TemporaryFile()
+                '''filename = 'client_data-{}_'.format(self.addr[1]) \
                             + datetime.datetime.now().strftime('%H:%M:%S.%f_%B_%d_%Y')
                 f = open(filename, 'w')'''
         f.close()
         self.stop()
-
-    def check_size_vs_time(self):
-        # Throw error if runtime is less than 10 seconds since no performance data will be reported in this case
-        if self.runtime < 10:
-            return False
-        # Test time to write file and force file rollover then determine if given runtime is enough for 2 file rolls
-        temp = tempfile.SpooledTemporaryFile(max_size=(self.filesize))
-        chunk = '0' * self.chunksize
-        start = time.time()
-        while temp._rolled == False:
-            temp.write(chunk)
-        temp.close()
-        # This method is called before the client is connected so this file roll will not be logged to the server
-        self.report_file_roll()
-        end = time.time()
-        time_per_file_roll = end - start
-        print 'client:{} - time_per_file_roll={}'.format(self.id, time_per_file_roll)
-        temp.close()
-        if (time_per_file_roll * 2) < self.runtime:
-            print 'client:{} OKAY'.format(self.id)
-            return True
-        else:
-            print 'client:{} ERROR - Invalid configuration'.format(self.id)
-            return False
 
     def report_file_roll(self):
         # Simply report file roll to host
@@ -171,6 +142,27 @@ class BenchmarkClient(asynchat.async_chat):
             thread.daemon = True
             thread.start()
 
+    def check_size_vs_time(self):
+        # Throw error if runtime is less than 10 seconds since no performance data will be reported in this case
+        if self.runtime < 10:
+            return False
+        # Test time to write chunk then determine if given runtime is enough for 2 file rolls
+        temp = tempfile.TemporaryFile()
+        chunk = '0' * self.chunksize
+        start = time.time()
+        temp.write(chunk)
+        end = time.time()
+        time_per_chunk = end - start
+        temp.close()
+        # Calculation for time to write 2 files:
+        # filesize/chunksize = [chunks per file]
+        # --> [chunks per file] * 2 * [measured time to write chunk] == [time to roll 2 files]
+        if (float(self.filesize * time_per_chunk * 2) / self.chunksize) < self.runtime:
+            return True
+        else:
+            return False
+
+
 
 if __name__ == "__main__":
     # Set up socket to local host with arbitrary port
@@ -188,40 +180,38 @@ if __name__ == "__main__":
     handler.setFormatter(formatter)
     client_logger.addHandler(handler)
 
-    print 'Creating and checking clients...'
     # SET UP CLIENTS HERE
-    # These clients are currently set up in a configuration that successfully completes as a test case on my PC.
-    # If performance on the test computer is poor they Modify as you see fit :-)
+    # ADDITIONAL CLIENTS MAY BE ADDED BUT PLEASE ADD A CORRESPONDING CALL TO ITS .start() METHOD BELOW
     chunksize = 10 * 1024 * 1024 #10MiB
-    runtime = 20 #seconds
+    runtime = 60 #seconds
     filesize = 1000 * 1024 * 1024 #1000MiB
     id = 1
     first_client = BenchmarkClient(address, id, chunksize, runtime, filesize)
     clients.append(first_client)
 
     chunksize = 20 * 1024 * 1024 #20MiB
-    runtime = 22
+    runtime = 72
     filesize = 500 * 1024 * 1024 #500MiB
     id = 2
     second_client = BenchmarkClient(address, id, chunksize, runtime, filesize)
     clients.append(second_client)
 
     chunksize = 30 * 1024 * 1024 #30MiB
-    runtime = 25
+    runtime = 65
     filesize = 250 * 1024 * 1024 #250MiB
     id = 3
     third_client = BenchmarkClient(address, id, chunksize, runtime, filesize)
     clients.append(third_client)
 
     chunksize = 80 * 1024 * 1024 #80MiB
-    runtime = 29
+    runtime = 45
     filesize = 750 * 1024 * 1024 #750MiB
     id = 4
     fourth_client = BenchmarkClient(address, id, chunksize, runtime, filesize)
     clients.append(fourth_client)
 
     chunksize = 15 * 1024 * 1024 #15MiB
-    runtime = 18
+    runtime = 45
     filesize = 100 * 1024 * 1024 #100MiB
     id = 5
     fifth_client = BenchmarkClient(address, id, chunksize, runtime, filesize)
@@ -239,10 +229,8 @@ if __name__ == "__main__":
     time.sleep(1)
     third_client.start()
     fourth_client.start()
-    time.sleep(2)
+    time.sleep(3)
     fifth_client.start()
-
-    print
 
     # Loop until all clients are disconnected then quit
     while True:
